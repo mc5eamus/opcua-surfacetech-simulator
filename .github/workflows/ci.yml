@@ -1,0 +1,46 @@
+name: CI - Build & Test Simulator
+
+on:
+  pull_request:
+    branches: ["*"]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build simulator Docker image
+        run: docker build -t opcua-surfacetech-simulator:test ./simulator
+
+      - name: Start simulator container
+        run: |
+          docker run -d \
+            --name simulator \
+            -p 4840:4840 \
+            -p 8080:8080 \
+            opcua-surfacetech-simulator:test
+          # Wait for the OPC UA server to be ready
+          sleep 5
+          docker logs simulator
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: |
+          pip install -r simulator/requirements.txt
+          pip install pytest pytest-asyncio
+
+      - name: Run discovery and telemetry tests
+        run: python -m pytest tests/test_discovery.py -v
+
+      - name: Stop simulator container
+        if: always()
+        run: |
+          docker stop simulator || true
+          docker rm simulator || true
