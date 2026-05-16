@@ -1,0 +1,76 @@
+# Packer Simulator -- TMC Cigarette Packer (PROTOS-style)
+#
+# Additive to opcua-simulator (cigarette maker). This deployment is the target
+# for the Azure IoT Operations OPC UA auto-discovery flow:
+# https://learn.microsoft.com/en-us/azure/iot-operations/discover-manage-assets/howto-detect-opc-ua-assets
+#
+# Endpoint: opc.tcp://opcua-packer-service:4840/aio-demo-packer
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opcua-packer-simulator
+  namespace: azure-iot-operations
+  labels:
+    app: opcua-packer-simulator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: opcua-packer-simulator
+  template:
+    metadata:
+      labels:
+        app: opcua-packer-simulator
+    spec:
+      containers:
+        - name: opcua-packer-sim
+          image: opcua-packer-sim:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 4840
+              name: opcua
+            - containerPort: 8080
+              name: web
+          env:
+            - name: OPCUA_PORT
+              value: "4840"
+            - name: WEB_PORT
+              value: "8080"
+            - name: PUBLISH_INTERVAL_MS
+              value: "1000"
+            - name: ENDPOINT_PATH
+              value: "aio-demo-packer"
+          resources:
+            requests:
+              cpu: 150m
+              memory: 192Mi
+            limits:
+              cpu: 600m
+              memory: 384Mi
+          readinessProbe:
+            tcpSocket:
+              port: 4840
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 4840
+            initialDelaySeconds: 20
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opcua-packer-service
+  namespace: azure-iot-operations
+spec:
+  selector:
+    app: opcua-packer-simulator
+  ports:
+    - name: opcua
+      port: 4840
+      targetPort: 4840
+    - name: web
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP

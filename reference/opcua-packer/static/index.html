@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>TMC Packer Simulator -- AIO Demo</title>
+<style>
+  body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0c10;color:#e8eaf0;margin:0;padding:24px;line-height:1.5}
+  h1{font-size:18px;font-weight:600;margin-bottom:4px}
+  .sub{color:#7c82a0;font-size:13px;margin-bottom:24px}
+  .badge{display:inline-block;font-size:10px;padding:3px 8px;border-radius:4px;background:rgba(167,139,250,0.1);border:1px solid rgba(167,139,250,0.25);color:#a78bfa;font-weight:600;letter-spacing:0.5px;margin-right:6px}
+  .card{background:#12151e;border:1px solid #262b3e;border-radius:10px;padding:18px;margin-bottom:16px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+  .kv{background:#1a1e2e;border:1px solid #262b3e;border-radius:6px;padding:10px}
+  .kv .k{color:#7c82a0;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px}
+  .kv .v{font-family:'JetBrains Mono',monospace;font-size:14px;color:#3dd68c}
+  ul{margin:8px 0 0 18px;color:#e8eaf0;font-size:13px}
+  code{background:#1a1e2e;padding:2px 6px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:12px;color:#67d4e2}
+  a{color:#5b9cf6;text-decoration:none}
+</style>
+</head>
+<body>
+<h1>TMC Packer Simulator</h1>
+<div class="sub">
+  <span class="badge">OPC UA DI</span>
+  <span class="badge">TMC PROTOS-M5</span>
+  Auto-discovery target for Azure IoT Operations
+  (<a href="https://learn.microsoft.com/en-us/azure/iot-operations/discover-manage-assets/howto-detect-opc-ua-assets" target="_blank">howto</a>)
+</div>
+
+<div class="card">
+  <div class="grid" id="status-grid">
+    <div class="kv"><div class="k">Loading…</div><div class="v">—</div></div>
+  </div>
+</div>
+
+<div class="card">
+  <strong>Connect with the AIO connector for OPC UA:</strong>
+  <ul>
+    <li>Endpoint: <code>opc.tcp://opcua-packer-service:4840/aio-demo-packer</code></li>
+    <li>Auth: Anonymous (demo only)</li>
+    <li>Device path: <code>Objects/DeviceSet/tmcpackermachine</code></li>
+    <li>Sub-modules expose <code>ParameterSet</code> per OPC 10000-100 (DI)</li>
+  </ul>
+</div>
+
+<script>
+async function tick() {
+  try {
+    const r = await fetch('/api/status'); const s = await r.json();
+    const g = document.getElementById('status-grid');
+    g.innerHTML = '';
+    const items = [
+      ['Endpoint', s.endpoint],
+      ['Device', s.device],
+      ['Sub-modules', (s.submodules || []).join(', ')],
+      ['Variables', s.variable_count],
+      ['Machine state', s.machine_state],
+      ['Speed (PPM)', s.speed_ppm],
+      ['Good packs', s.good_packs?.toLocaleString?.() ?? s.good_packs],
+      ['Rejected packs', s.rejected_packs?.toLocaleString?.() ?? s.rejected_packs],
+      ['Cycles', s.cycles],
+      ['Uptime (s)', s.uptime_seconds],
+    ];
+    for (const [k, v] of items) {
+      const d = document.createElement('div');
+      d.className = 'kv';
+      d.innerHTML = `<div class="k">${k}</div><div class="v">${v ?? '—'}</div>`;
+      g.appendChild(d);
+    }
+  } catch (e) { /* ignore */ }
+}
+tick(); setInterval(tick, 2000);
+</script>
+</body>
+</html>
