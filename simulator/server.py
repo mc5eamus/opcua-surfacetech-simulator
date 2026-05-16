@@ -364,7 +364,7 @@ async def build_address_space(server: Server) -> Node:
             log.error("Nodeset not found: %s", ns_path)
             sys.exit(1)
         log.info("Loading nodeset: %s", ns_file)
-        await server.import_xml(str(ns_path))
+        await server.import_xml(str(ns_path), strict_mode=False)
         log.info("Loaded %s", ns_file)
 
     # Register all namespaces.
@@ -752,7 +752,7 @@ async def main() -> None:
     server.set_server_name("SurfaceTech Coating Line Simulator")
 
     # Self-signed certificate for Sign / SignAndEncrypt endpoints.
-    cert_dir = Path(__file__).resolve().parent / "certs"
+    cert_dir = Path("/tmp/opcua-surfacetech-certs")
     cert_dir.mkdir(parents=True, exist_ok=True)
     cert_file = cert_dir / "server-cert.der"
     key_file = cert_dir / "server-key.pem"

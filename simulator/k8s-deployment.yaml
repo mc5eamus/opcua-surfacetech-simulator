@@ -1,0 +1,75 @@
+# SurfaceTech Coating Simulator
+#
+# OPC UA simulator for industrial powder coating line using the
+# SurfaceTechnology/GeneralTypes companion specification.
+#
+# Endpoint: opc.tcp://surfacetech-simulator-service:4840/surfacetech-demo
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: surfacetech-simulator
+  namespace: azure-iot-operations
+  labels:
+    app: surfacetech-simulator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: surfacetech-simulator
+  template:
+    metadata:
+      labels:
+        app: surfacetech-simulator
+    spec:
+      containers:
+        - name: surfacetech-sim
+          image: surfacetech-sim:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 4840
+              name: opcua
+            - containerPort: 8080
+              name: web
+          env:
+            - name: OPCUA_PORT
+              value: "4840"
+            - name: WEB_PORT
+              value: "8080"
+            - name: PUBLISH_INTERVAL_MS
+              value: "1000"
+            - name: ENDPOINT_PATH
+              value: "surfacetech-demo"
+          resources:
+            requests:
+              cpu: 150m
+              memory: 192Mi
+            limits:
+              cpu: 600m
+              memory: 384Mi
+          readinessProbe:
+            tcpSocket:
+              port: 4840
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 4840
+            initialDelaySeconds: 20
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: surfacetech-simulator-service
+  namespace: azure-iot-operations
+spec:
+  selector:
+    app: surfacetech-simulator
+  ports:
+    - name: opcua
+      port: 4840
+      targetPort: 4840
+    - name: web
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP
