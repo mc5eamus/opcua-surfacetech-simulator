@@ -110,7 +110,9 @@ def nodeset_files_for_profile(profile: str) -> list[str]:
         return MINIMAL_NODESET_FILES
     if normalized == "full":
         return ALL_NODESET_FILES
-    raise ValueError("OPCUA_NODESET_PROFILE must be 'minimal' or 'full'")
+    raise ValueError(
+        f"OPCUA_NODESET_PROFILE must be 'minimal' or 'full', got: {profile!r}"
+    )
 
 
 NODESET_PROFILE = os.getenv("OPCUA_NODESET_PROFILE", "minimal")
@@ -447,7 +449,11 @@ async def build_address_space(server: Server) -> Node:
         if ST_NAMESPACE in loaded_namespaces else 0
     )
     VENDOR_NS_IDX = await server.register_namespace(VENDOR_NAMESPACE)
-    log.info("Nodeset profile '%s' loaded files: %s", NODESET_PROFILE, NODESET_FILES)
+    log.info(
+        "Nodeset profile '%s' loaded files: %s",
+        NODESET_PROFILE,
+        ", ".join(NODESET_FILES),
+    )
     log.info("Namespaces -- DI=%d IA=%d Machinery=%d ISA95=%d MachJobs=%d ST=%d Vendor=%d",
              DI_NS_IDX, IA_NS_IDX, MACH_NS_IDX, ISA95_NS_IDX,
              MACH_JOBS_NS_IDX, ST_NS_IDX, VENDOR_NS_IDX)
