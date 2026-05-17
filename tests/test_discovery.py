@@ -51,8 +51,11 @@ async def opcua_server():
     await sim_server.build_address_space(srv)
 
     await srv.start()
-    await asyncio.sleep(0.5)
+    sim_task = asyncio.create_task(sim_server.simulation_loop())
+    await asyncio.sleep(sim_server.INTERVAL * 1.5)
     yield srv
+    sim_task.cancel()
+    await asyncio.gather(sim_task, return_exceptions=True)
     await srv.stop()
 
 
@@ -69,7 +72,7 @@ async def opcua_client(opcua_server):
 # Helper: recursive tree walker
 # ---------------------------------------------------------------------------
 async def walk_tree(node: Node, depth: int = 0, max_depth: int = 12,
-                    collected: dict | None = None) -> dict:
+                    collected: dict | None = None, path: tuple[str, ...] = ()) -> dict:
     """Recursively walk the OPC UA address space from *node* and collect
     browse names and node classes.  Returns a dict of {browse_path: node_class}."""
     if collected is None:
@@ -80,13 +83,14 @@ async def walk_tree(node: Node, depth: int = 0, max_depth: int = 12,
     try:
         bn = await node.read_browse_name()
         nc = await node.read_node_class()
-        key = bn.Name
+        current_path = path + (bn.Name,)
+        key = "/".join(current_path)
         collected[key] = nc
     except Exception:
         return collected
 
     for child in await node.get_children():
-        await walk_tree(child, depth + 1, max_depth, collected)
+        await walk_tree(child, depth + 1, max_depth, collected, current_path)
 
     return collected
 
@@ -436,12 +440,12 @@ class TestTreeTraversal:
             "Process", "Consumption", "Health",
         ]
         for name in expected_nodes:
-            assert name in tree, (
+            assert any(path.endswith(f"/{name}") or path == name for path in tree), (
                 f"{name} not found in tree traversal. Found: {sorted(tree.keys())}")
 
 
     async def test_variable_count(self, opcua_client: Client):
-        """Count total Variable nodes in the CoatingSystem subtree."""
+        """Count simulated telemetry Variable nodes in the CoatingSystem subtree."""
         objects = opcua_client.nodes.objects
 
         coating = None
@@ -452,24 +456,36 @@ class TestTreeTraversal:
                 break
         assert coating is not None
 
-        async def count_variables(node: Node, depth: int = 0) -> int:
+        expected_vars = {name for name, *_ in sim_server.SYSTEM_MONITORING}
+        for process_vars, consumption_vars, health_vars in sim_server.COMPONENTS.values():
+            expected_vars.update(name for name, *_ in process_vars)
+            expected_vars.update(name for name, *_ in consumption_vars)
+            expected_vars.update(name for name, *_ in health_vars)
+
+        async def count_variables(node: Node, depth: int = 0) -> dict[str, int]:
             if depth > 15:
-                return 0
-            count = 0
+                return {}
+            counts: dict[str, int] = {}
             try:
                 nc = await node.read_node_class()
                 if nc == ua.NodeClass.Variable:
-                    count += 1
+                    bn = await node.read_browse_name()
+                    if bn.Name in expected_vars:
+                        counts[bn.Name] = counts.get(bn.Name, 0) + 1
             except Exception:
                 pass
             for child in await node.get_children():
-                count += await count_variables(child, depth + 1)
-            return count
+                child_counts = await count_variables(child, depth + 1)
+                for name, count in child_counts.items():
+                    counts[name] = counts.get(name, 0) + count
+            return counts
 
-        total = await count_variables(coating)
-        # We expect at least 43 simulated variables plus nameplate properties
-        assert total >= 43, (
-            f"Expected >= 43 variables, found {total}")
+        telemetry_counts = await count_variables(coating)
+        missing = sorted(expected_vars - set(telemetry_counts))
+        assert not missing, f"Missing simulated telemetry variables: {missing}"
+        total = sum(telemetry_counts.values())
+        assert total == len(expected_vars), (
+            f"Expected {len(expected_vars)} simulated telemetry variables, found {total}")
 
 
     async def test_engineering_units_present(self, opcua_client: Client):

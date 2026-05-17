@@ -35,7 +35,7 @@
 <div class="card">
   <strong>OPC UA Connection Details:</strong>
   <ul>
-    <li>Endpoint: <code>opc.tcp://surfacetech-simulator-service:4840/surfacetech-demo</code></li>
+    <li>Endpoint: <code id="endpoint-hint">Loading…</code></li>
     <li>Auth: Anonymous (demo only)</li>
     <li>System path: <code>Objects/CoatingSystem</code></li>
     <li>Components: PretreatmentStation, PowderBooth, CuringOven, ConveyorSystem</li>
@@ -47,6 +47,8 @@
 async function tick() {
   try {
     const r = await fetch('/api/status'); const s = await r.json();
+    const endpointHint = document.getElementById('endpoint-hint');
+    if (endpointHint) endpointHint.textContent = s.endpoint ?? '—';
     const g = document.getElementById('status-grid');
     g.innerHTML = '';
     const items = [

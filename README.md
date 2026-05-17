@@ -206,7 +206,10 @@ The simulator is configured via environment variables:
 | Variable             | Default            | Description                          |
 |----------------------|--------------------|--------------------------------------|
 | `OPCUA_PORT`         | `4840`             | OPC UA server listening port         |
+| `OPCUA_BIND_HOST`    | `0.0.0.0`          | OPC UA bind address                  |
+| `OPCUA_ADVERTISED_HOST` | `localhost`     | Hostname advertised in endpoint discovery and web status |
 | `WEB_PORT`           | `8080`             | Web dashboard / API port             |
+| `WEB_BIND_HOST`      | `0.0.0.0`          | Web server bind address              |
 | `PUBLISH_INTERVAL_MS`| `1000`             | Simulation tick interval in ms       |
 | `ENDPOINT_PATH`      | `surfacetech-demo` | URL path of the OPC UA endpoint      |
 
