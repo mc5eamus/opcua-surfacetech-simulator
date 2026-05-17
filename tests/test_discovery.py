@@ -121,6 +121,16 @@ class TestEndpointDiscovery:
         assert any("Machinery" in ns for ns in ns_array), (
             f"Machinery namespace missing: {ns_array}")
 
+    async def test_default_nodeset_profile(self):
+        """Default profile should skip ISA95 and Machinery.Jobs nodesets."""
+        minimal_files = sim_server.nodeset_files_for_profile("minimal")
+        assert "Opc.Ua.ISA95-JOBCONTROL.NodeSet2.xml" not in minimal_files
+        assert "Opc.Ua.Machinery.Jobs.NodeSet2.xml" not in minimal_files
+        assert "Opc.Ua.Di.NodeSet2.xml" in minimal_files
+        assert "Opc.Ua.IA.NodeSet2.xml" in minimal_files
+        assert "Opc.Ua.Machinery.NodeSet2.xml" in minimal_files
+        assert "Opc.Ua.STGeneralTypes.NodeSet2.xml" in minimal_files
+
 
 class TestAddressSpaceStructure:
     """Verify the structure of the address space matches the SurfaceTechnology model."""

@@ -212,6 +212,7 @@ The simulator is configured via environment variables:
 | `WEB_BIND_HOST`      | `0.0.0.0`          | Web server bind address              |
 | `PUBLISH_INTERVAL_MS`| `1000`             | Simulation tick interval in ms       |
 | `ENDPOINT_PATH`      | `surfacetech-demo` | URL path of the OPC UA endpoint      |
+| `OPCUA_NODESET_PROFILE` | `minimal`       | Nodeset profile: `minimal` (DI + IA + Machinery + STGeneralTypes) or `full` (all bundled nodesets) |
 
 Example:
 
@@ -302,8 +303,12 @@ opcua-surfacetech-simulator/
 
 ## Companion Nodesets
 
-The simulator loads 6 companion specification nodesets in dependency
-order. These are sourced from the
+The simulator supports two nodeset profiles:
+
+- `minimal` (default): DI, IA, Machinery, STGeneralTypes
+- `full`: DI, IA, Machinery, ISA95-JOBCONTROL, Machinery.Jobs, STGeneralTypes
+
+These nodesets are sourced from the
 [OPCFoundation/UA-Nodeset](https://github.com/OPCFoundation/UA-Nodeset)
 repository:
 
@@ -319,6 +324,9 @@ repository:
 > **Compatibility note:** The STGeneralTypes nodeset requires OPC UA
 > base namespace ≥ 1.05.06, but the `asyncua` library ships with
 > 1.05.04. The bundled nodeset has this requirement relaxed to 1.05.04.
+> For the default `minimal` profile, STGeneralTypes required-model entries
+> for ISA95 JobControl and Machinery Jobs are also relaxed so the server
+> can start without importing those two companion nodesets.
 > Additionally, `strict_mode=False` is used during XML import because
 > some newer nodesets reference parent nodes not present in `asyncua`'s
 > built-in address space.

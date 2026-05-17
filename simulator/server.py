@@ -24,10 +24,11 @@ Address space
 
 Environment variables
 ---------------------
-OPCUA_PORT          OPC UA listening port (default 4840)
-WEB_PORT            Web UI port (default 8080)
-PUBLISH_INTERVAL_MS Telemetry interval in ms (default 1000)
-ENDPOINT_PATH       URL path of the OPC UA endpoint (default surfacetech-demo)
+OPCUA_PORT            OPC UA listening port (default 4840)
+WEB_PORT              Web UI port (default 8080)
+PUBLISH_INTERVAL_MS   Telemetry interval in ms (default 1000)
+ENDPOINT_PATH         URL path of the OPC UA endpoint (default surfacetech-demo)
+OPCUA_NODESET_PROFILE Nodeset loading profile: minimal|full (default minimal)
 """
 
 from __future__ import annotations
@@ -79,7 +80,7 @@ ST_NAMESPACE = "http://opcfoundation.org/UA/SurfaceTechnology/GeneralTypes/"
 VENDOR_NAMESPACE = "urn:surfacetech-demo:coating-system"
 
 NODESETS_DIR = Path(__file__).with_name("nodesets")
-NODESET_FILES = [
+ALL_NODESET_FILES = [
     "Opc.Ua.Di.NodeSet2.xml",
     "Opc.Ua.IA.NodeSet2.xml",
     "Opc.Ua.Machinery.NodeSet2.xml",
@@ -87,6 +88,35 @@ NODESET_FILES = [
     "Opc.Ua.Machinery.Jobs.NodeSet2.xml",
     "Opc.Ua.STGeneralTypes.NodeSet2.xml",
 ]
+MINIMAL_NODESET_FILES = [
+    "Opc.Ua.Di.NodeSet2.xml",
+    "Opc.Ua.IA.NodeSet2.xml",
+    "Opc.Ua.Machinery.NodeSet2.xml",
+    "Opc.Ua.STGeneralTypes.NodeSet2.xml",
+]
+NODESET_NAMESPACE_URIS = {
+    "Opc.Ua.Di.NodeSet2.xml": DI_NAMESPACE,
+    "Opc.Ua.IA.NodeSet2.xml": IA_NAMESPACE,
+    "Opc.Ua.Machinery.NodeSet2.xml": MACHINERY_NAMESPACE,
+    "Opc.Ua.ISA95-JOBCONTROL.NodeSet2.xml": ISA95_NAMESPACE,
+    "Opc.Ua.Machinery.Jobs.NodeSet2.xml": MACHINERY_JOBS_NAMESPACE,
+    "Opc.Ua.STGeneralTypes.NodeSet2.xml": ST_NAMESPACE,
+}
+
+
+def nodeset_files_for_profile(profile: str) -> list[str]:
+    normalized = profile.strip().lower()
+    if normalized == "minimal":
+        return MINIMAL_NODESET_FILES
+    if normalized == "full":
+        return ALL_NODESET_FILES
+    raise ValueError(
+        f"OPCUA_NODESET_PROFILE must be 'minimal' or 'full', got: {profile!r}"
+    )
+
+
+NODESET_PROFILE = os.getenv("OPCUA_NODESET_PROFILE", "minimal")
+NODESET_FILES = nodeset_files_for_profile(NODESET_PROFILE)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("surfacetech-simulator")
@@ -388,14 +418,42 @@ async def build_address_space(server: Server) -> Node:
         await server.import_xml(str(ns_path), strict_mode=False)
         log.info("Loaded %s", ns_file)
 
-    # Register all namespaces.
-    DI_NS_IDX = await server.register_namespace(DI_NAMESPACE)
-    IA_NS_IDX = await server.register_namespace(IA_NAMESPACE)
-    MACH_NS_IDX = await server.register_namespace(MACHINERY_NAMESPACE)
-    ISA95_NS_IDX = await server.register_namespace(ISA95_NAMESPACE)
-    MACH_JOBS_NS_IDX = await server.register_namespace(MACHINERY_JOBS_NAMESPACE)
-    ST_NS_IDX = await server.register_namespace(ST_NAMESPACE)
+    # Register namespaces for loaded nodesets and vendor nodes.
+    loaded_namespaces = {
+        NODESET_NAMESPACE_URIS[ns_file]
+        for ns_file in NODESET_FILES
+        if ns_file in NODESET_NAMESPACE_URIS
+    }
+    DI_NS_IDX = (
+        await server.register_namespace(DI_NAMESPACE)
+        if DI_NAMESPACE in loaded_namespaces else 0
+    )
+    IA_NS_IDX = (
+        await server.register_namespace(IA_NAMESPACE)
+        if IA_NAMESPACE in loaded_namespaces else 0
+    )
+    MACH_NS_IDX = (
+        await server.register_namespace(MACHINERY_NAMESPACE)
+        if MACHINERY_NAMESPACE in loaded_namespaces else 0
+    )
+    ISA95_NS_IDX = (
+        await server.register_namespace(ISA95_NAMESPACE)
+        if ISA95_NAMESPACE in loaded_namespaces else 0
+    )
+    MACH_JOBS_NS_IDX = (
+        await server.register_namespace(MACHINERY_JOBS_NAMESPACE)
+        if MACHINERY_JOBS_NAMESPACE in loaded_namespaces else 0
+    )
+    ST_NS_IDX = (
+        await server.register_namespace(ST_NAMESPACE)
+        if ST_NAMESPACE in loaded_namespaces else 0
+    )
     VENDOR_NS_IDX = await server.register_namespace(VENDOR_NAMESPACE)
+    log.info(
+        "Nodeset profile '%s' loaded files: %s",
+        NODESET_PROFILE,
+        ", ".join(NODESET_FILES),
+    )
     log.info("Namespaces -- DI=%d IA=%d Machinery=%d ISA95=%d MachJobs=%d ST=%d Vendor=%d",
              DI_NS_IDX, IA_NS_IDX, MACH_NS_IDX, ISA95_NS_IDX,
              MACH_JOBS_NS_IDX, ST_NS_IDX, VENDOR_NS_IDX)
