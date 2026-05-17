@@ -44,3 +44,17 @@ jobs:
         run: |
           docker stop simulator || true
           docker rm simulator || true
+
+      - name: Log in to Azure Container Registry
+        if: secrets.ACR_LOGIN_SERVER != ''
+        run: echo "${{ secrets.ACR_PASSWORD }}" | docker login ${{ secrets.ACR_LOGIN_SERVER }} -u ${{ secrets.ACR_USERNAME }} --password-stdin
+
+      - name: Tag and push image to ACR
+        if: secrets.ACR_LOGIN_SERVER != ''
+        run: |
+          IMAGE=${{ secrets.ACR_LOGIN_SERVER }}/opcua-surfacetech-simulator
+          SHORT_SHA=${GITHUB_SHA::7}
+          docker tag opcua-surfacetech-simulator:test $IMAGE:$SHORT_SHA
+          docker tag opcua-surfacetech-simulator:test $IMAGE:latest
+          docker push $IMAGE:$SHORT_SHA
+          docker push $IMAGE:latest
