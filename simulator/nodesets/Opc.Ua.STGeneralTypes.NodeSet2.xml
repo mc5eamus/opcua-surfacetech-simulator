@@ -41,8 +41,6 @@
       <RequiredModel ModelUri="http://opcfoundation.org/UA/DI/" Version="1.04.0" PublicationDate="2022-11-03T00:00:00Z" />
       <RequiredModel ModelUri="http://opcfoundation.org/UA/IA/" Version="1.01.2" PublicationDate="2024-02-28T00:00:00Z" />
       <RequiredModel ModelUri="http://opcfoundation.org/UA/Machinery/" Version="1.04.1" PublicationDate="2026-01-01T00:00:00Z" />
-      <RequiredModel ModelUri="http://opcfoundation.org/UA/ISA95-JOBCONTROL_V2/" Version="2.0.0" PublicationDate="2024-01-31T00:00:00Z" />
-      <RequiredModel ModelUri="http://opcfoundation.org/UA/Machinery/Jobs/" Version="1.0.1" PublicationDate="2024-05-01T00:00:00Z" />
     </Model>
   </Models>
   <Aliases>
