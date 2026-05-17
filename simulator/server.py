@@ -40,6 +40,7 @@ import random
 import signal
 import sys
 import time
+import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -58,7 +59,16 @@ PORT = int(os.getenv("OPCUA_PORT", "4840"))
 WEB_PORT = int(os.getenv("WEB_PORT", "8080"))
 PUBLISH_MS = int(os.getenv("PUBLISH_INTERVAL_MS", "1000"))
 ENDPOINT_PATH = os.getenv("ENDPOINT_PATH", "surfacetech-demo")
+BIND_HOST = os.getenv("OPCUA_BIND_HOST", "0.0.0.0")
+ADVERTISED_HOST = os.getenv("OPCUA_ADVERTISED_HOST", "localhost")
+WEB_BIND_HOST = os.getenv("WEB_BIND_HOST", "0.0.0.0")
+if PUBLISH_MS <= 0:
+    raise ValueError("PUBLISH_INTERVAL_MS must be positive")
 INTERVAL = PUBLISH_MS / 1000.0
+SERIAL_SUFFIX_MIN = 1000
+SERIAL_SUFFIX_SPAN = 9000
+if SERIAL_SUFFIX_MIN + SERIAL_SUFFIX_SPAN - 1 > 9_999:
+    raise ValueError("Component serial suffix range must stay within 4 digits")
 
 DI_NAMESPACE = "http://opcfoundation.org/UA/DI/"
 IA_NAMESPACE = "http://opcfoundation.org/UA/IA/"
@@ -187,6 +197,7 @@ class SimState:
     line_speed: float = 120.0
     oee: float = 82.5
     energy_kwh: float = 45_600.0
+    production_remainder: float = 0.0
     started_at: float = field(default_factory=time.monotonic)
     cycles: int = 0
 
@@ -223,6 +234,16 @@ def variant_for(dtype: ua.VariantType, value: Any) -> ua.Variant:
     if dtype == ua.VariantType.String:
         return ua.Variant(str(value), dtype)
     return ua.Variant(value, dtype)
+
+
+def endpoint_url(host: str) -> str:
+    return f"opc.tcp://{host}:{PORT}/{ENDPOINT_PATH}"
+
+
+def stable_component_serial(component_name: str) -> str:
+    prefix = component_name[:3].upper().ljust(3, "X")
+    suffix = SERIAL_SUFFIX_MIN + (zlib.crc32(component_name.encode("utf-8")) % SERIAL_SUFFIX_SPAN)
+    return f"PLX-{prefix}-{suffix:04d}"
 
 
 async def find_child_by_name(parent: Node, name: str) -> Node | None:
@@ -522,7 +543,7 @@ async def build_address_space(server: Server) -> Node:
         await set_or_add_property(
             comp_ident, "SerialNumber",
             vendor_sid(f"{comp_prefix}.Identification.SerialNumber"),
-            variant_for(ua.VariantType.String, f"PLX-{comp_name[:3].upper()}-{1000 + hash(comp_name) % 9000:04d}"),
+            variant_for(ua.VariantType.String, stable_component_serial(comp_name)),
             bname_ns=DI_NS_IDX,
         )
 
@@ -615,10 +636,13 @@ async def simulation_loop() -> None:
 
         # --- Production counters ---
         if running:
-            parts_tick = max(0, int(SIM.line_speed / 3600.0 * INTERVAL))
-            rejects_tick = sum(1 for _ in range(max(1, parts_tick))
-                               if rng.random() < 0.004)
-            SIM.parts_produced += max(0, parts_tick - rejects_tick)
+            produced_this_tick = max(
+                0.0, (SIM.line_speed / 3600.0 * INTERVAL) + SIM.production_remainder
+            )
+            parts_tick = int(produced_this_tick)
+            SIM.production_remainder = produced_this_tick - parts_tick
+            rejects_tick = sum(1 for _ in range(parts_tick) if rng.random() < 0.004)
+            SIM.parts_produced += parts_tick - rejects_tick
             SIM.parts_rejected += rejects_tick
             SIM.line_speed = pid_step(SIM.line_speed, 120.0, k=0.1, noise=1.5)
             SIM.energy_kwh += 85.0 * INTERVAL / 3600.0
@@ -727,7 +751,7 @@ async def root() -> HTMLResponse:
 async def status() -> JSONResponse:
     status_names = {0: "Idle", 1: "Running", 2: "Paused", 3: "Error", 4: "Maintenance"}
     return JSONResponse({
-        "endpoint": f"opc.tcp://0.0.0.0:{PORT}/{ENDPOINT_PATH}",
+        "endpoint": endpoint_url(ADVERTISED_HOST),
         "uptime_seconds": round(time.monotonic() - SIM.started_at, 1),
         "cycles": SIM.cycles,
         "device": "CoatingSystem",
@@ -748,7 +772,10 @@ async def status() -> JSONResponse:
 async def main() -> None:
     server = Server()
     await server.init()
-    server.set_endpoint(f"opc.tcp://0.0.0.0:{PORT}/{ENDPOINT_PATH}")
+    server.set_endpoint(endpoint_url(ADVERTISED_HOST))
+    server.socket_address = (BIND_HOST, PORT)
+    server.set_match_discovery_client_ip(False)
+    server.set_match_discovery_endpoint_url(False)
     server.set_server_name("SurfaceTech Coating Line Simulator")
 
     # Self-signed certificate for Sign / SignAndEncrypt endpoints.
@@ -783,10 +810,10 @@ async def main() -> None:
     await build_address_space(server)
 
     async with server:
-        log.info("OPC UA server listening on opc.tcp://0.0.0.0:%d/%s",
-                 PORT, ENDPOINT_PATH)
+        log.info("OPC UA server bound to opc.tcp://%s:%d/%s (advertised as %s)",
+                 BIND_HOST, PORT, ENDPOINT_PATH, endpoint_url(ADVERTISED_HOST))
 
-        config = uvicorn.Config(app, host="0.0.0.0", port=WEB_PORT,
+        config = uvicorn.Config(app, host=WEB_BIND_HOST, port=WEB_PORT,
                                 log_level="warning")
         web_server = uvicorn.Server(config)
         sim_task = asyncio.create_task(simulation_loop())
@@ -799,11 +826,30 @@ async def main() -> None:
                 loop.add_signal_handler(sig, stop.set)
             except NotImplementedError:
                 pass
-        await stop.wait()
+
+        stop_task = asyncio.create_task(stop.wait())
+        done, _ = await asyncio.wait(
+            {stop_task, sim_task, web_task},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        unexpected_task_failure = False
+        if stop_task not in done:
+            unexpected_task_failure = True
+            stop.set()
+            if sim_task in done:
+                exc = sim_task.exception()
+                log.error("simulation_loop exited unexpectedly: %s", exc)
+            if web_task in done:
+                exc = web_task.exception()
+                log.error("web server exited unexpectedly: %s", exc)
 
         sim_task.cancel()
         web_server.should_exit = True
+        if not stop_task.done():
+            stop_task.cancel()
         await asyncio.gather(sim_task, web_task, return_exceptions=True)
+        if unexpected_task_failure:
+            raise RuntimeError("A critical background task stopped unexpectedly")
 
 
 if __name__ == "__main__":
