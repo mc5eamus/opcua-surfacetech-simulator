@@ -433,15 +433,26 @@ class TestTreeTraversal:
         assert len(tree) > 30, (
             f"Expected > 30 nodes in CoatingSystem subtree, found {len(tree)}")
 
-        # Verify key nodes are present
-        expected_nodes = [
-            "CoatingSystem", "Identification", "Components", "Monitoring",
-            "PretreatmentStation", "PowderBooth", "CuringOven", "ConveyorSystem",
-            "Process", "Consumption", "Health",
+        # Verify key paths are present
+        expected_paths = [
+            "CoatingSystem",
+            "CoatingSystem/Identification",
+            "CoatingSystem/Components",
+            "CoatingSystem/Monitoring",
+            "CoatingSystem/Components/PretreatmentStation",
+            "CoatingSystem/Components/PowderBooth",
+            "CoatingSystem/Components/CuringOven",
+            "CoatingSystem/Components/ConveyorSystem",
+            "CoatingSystem/Components/PowderBooth/Monitoring/Process",
+            "CoatingSystem/Components/PowderBooth/Monitoring/Consumption",
+            "CoatingSystem/Components/PowderBooth/Monitoring/Health",
         ]
-        for name in expected_nodes:
-            assert any(path.endswith(f"/{name}") or path == name for path in tree), (
-                f"{name} not found in tree traversal. Found: {sorted(tree.keys())}")
+        for expected_path in expected_paths:
+            if expected_path not in tree:
+                sample_paths = sorted(tree.keys())[:10]
+                pytest.fail(
+                    f"{expected_path} not found in tree traversal. Sample paths: {sample_paths}"
+                )
 
 
     async def test_variable_count(self, opcua_client: Client):
@@ -463,6 +474,11 @@ class TestTreeTraversal:
             expected_vars.update(name for name, *_ in health_vars)
 
         async def count_variables(node: Node, depth: int = 0) -> dict[str, int]:
+            """Count expected telemetry variables under *node*.
+
+            Returns a mapping of browse name -> occurrence count, limited to
+            variables in the expected simulator telemetry set.
+            """
             if depth > 15:
                 return {}
             counts: dict[str, int] = {}

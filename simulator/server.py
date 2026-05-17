@@ -62,9 +62,13 @@ ENDPOINT_PATH = os.getenv("ENDPOINT_PATH", "surfacetech-demo")
 BIND_HOST = os.getenv("OPCUA_BIND_HOST", "0.0.0.0")
 ADVERTISED_HOST = os.getenv("OPCUA_ADVERTISED_HOST", "localhost")
 WEB_BIND_HOST = os.getenv("WEB_BIND_HOST", "0.0.0.0")
-INTERVAL = PUBLISH_MS / 1000.0
 if PUBLISH_MS <= 0:
-    raise ValueError("PUBLISH_INTERVAL_MS must be a positive integer")
+    raise ValueError("PUBLISH_INTERVAL_MS must be positive")
+INTERVAL = PUBLISH_MS / 1000.0
+SERIAL_SUFFIX_MIN = 1000
+SERIAL_SUFFIX_SPAN = 9000
+if SERIAL_SUFFIX_MIN + SERIAL_SUFFIX_SPAN - 1 > 9_999:
+    raise ValueError("Component serial suffix range must stay within 4 digits")
 
 DI_NAMESPACE = "http://opcfoundation.org/UA/DI/"
 IA_NAMESPACE = "http://opcfoundation.org/UA/IA/"
@@ -237,8 +241,8 @@ def endpoint_url(host: str) -> str:
 
 
 def stable_component_serial(component_name: str) -> str:
-    prefix = component_name[:3].upper()
-    suffix = 1000 + (zlib.crc32(component_name.encode("utf-8")) % 9000)
+    prefix = component_name[:3].upper().ljust(3, "X")
+    suffix = SERIAL_SUFFIX_MIN + (zlib.crc32(component_name.encode("utf-8")) % SERIAL_SUFFIX_SPAN)
     return f"PLX-{prefix}-{suffix:04d}"
 
 
@@ -632,9 +636,11 @@ async def simulation_loop() -> None:
 
         # --- Production counters ---
         if running:
-            produced_this_tick = (SIM.line_speed / 3600.0 * INTERVAL) + SIM.production_remainder
-            parts_tick = max(0, int(produced_this_tick))
-            SIM.production_remainder = max(0.0, produced_this_tick - parts_tick)
+            produced_this_tick = max(
+                0.0, (SIM.line_speed / 3600.0 * INTERVAL) + SIM.production_remainder
+            )
+            parts_tick = int(produced_this_tick)
+            SIM.production_remainder = produced_this_tick - parts_tick
             rejects_tick = sum(1 for _ in range(parts_tick) if rng.random() < 0.004)
             SIM.parts_produced += parts_tick - rejects_tick
             SIM.parts_rejected += rejects_tick
@@ -831,9 +837,11 @@ async def main() -> None:
             unexpected_task_failure = True
             stop.set()
             if sim_task in done:
-                log.error("simulation_loop exited unexpectedly")
+                exc = sim_task.exception()
+                log.error("simulation_loop exited unexpectedly: %s", exc)
             if web_task in done:
-                log.error("web server exited unexpectedly")
+                exc = web_task.exception()
+                log.error("web server exited unexpectedly: %s", exc)
 
         sim_task.cancel()
         web_server.should_exit = True
