@@ -6,9 +6,10 @@ companion specification (OPC 40563).
 
 The simulator loads the official OPC Foundation companion nodesets and
 instantiates a complete coating system with four components, a line
-controller, and 43 process variables driven by a PID-style simulation
-loop. It is designed as a discovery and telemetry target for OPC UA
-clients such as
+controller, and 43 simulated variables across process, system,
+consumption, and health groups driven by a PID-style simulation loop.
+It is designed as a discovery and telemetry target for OPC UA clients
+such as
 [Azure IoT Operations](https://learn.microsoft.com/en-us/azure/iot-operations/discover-manage-assets/howto-detect-opc-ua-assets).
 
 ---
